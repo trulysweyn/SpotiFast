@@ -31,6 +31,22 @@ jobs:
           Copy-Item target\release\spotifast.exe dist\SpotiFast.exe
           Copy-Item target\release\spotifast_updater.exe dist\SpotiFastUpdater.exe
 
+      - name: Build single-file installer
+        shell: pwsh
+        run: |
+          $compiler = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          if (-not $compiler) {
+            $programFilesX86 = [Environment]::GetFolderPath('ProgramFilesX86')
+            $candidate = Join-Path $programFilesX86 'Inno Setup 6\ISCC.exe'
+            if (-not (Test-Path -LiteralPath $candidate)) { throw 'Inno Setup compiler was not found.' }
+            $compilerPath = $candidate
+          } else {
+            $compilerPath = $compiler.Source
+          }
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          & $compilerPath "/DMyAppVersion=$version" installer\SpotiFast.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE." }
+
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -39,5 +55,6 @@ jobs:
           gh release create $env:GITHUB_REF_NAME `
             dist\SpotiFast.exe `
             dist\SpotiFastUpdater.exe `
+            dist\SpotiFast-Setup.exe `
             --title $env:GITHUB_REF_NAME `
             --generate-notes
