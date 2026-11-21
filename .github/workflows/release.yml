@@ -1,0 +1,43 @@
+name: Build and publish Windows release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build app and updater helper
+        env:
+          SPOTIFAST_REPOSITORY: ${{ github.repository }}
+          CARGO_TERM_COLOR: always
+        run: cargo build --release --bins
+
+      - name: Prepare release files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item target\release\spotifast.exe dist\SpotiFast.exe
+          Copy-Item target\release\spotifast_updater.exe dist\SpotiFastUpdater.exe
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          gh release create $env:GITHUB_REF_NAME `
+            dist\SpotiFast.exe `
+            dist\SpotiFastUpdater.exe `
+            --title $env:GITHUB_REF_NAME `
+            --generate-notes
