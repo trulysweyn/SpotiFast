@@ -20,7 +20,6 @@ jobs:
 
       - name: Build app and updater helper
         env:
-          SPOTIFAST_REPOSITORY: ${{ github.repository }}
           CARGO_TERM_COLOR: always
         run: cargo build --release --bins
 

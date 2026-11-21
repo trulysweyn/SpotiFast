@@ -238,16 +238,12 @@ pub struct PersistedState {
 #[serde(default)]
 pub struct AppSettings {
     pub run_at_startup: bool,
-    pub update_repository: String,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
             run_at_startup: false,
-            update_repository: option_env!("SPOTIFAST_REPOSITORY")
-                .unwrap_or("trulysweyn/SpotiFast")
-                .to_string(),
         }
     }
 }

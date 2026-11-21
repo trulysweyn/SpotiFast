@@ -33,6 +33,7 @@ use ui::{
 use updater::{AppUpdateInfo, ToolKind, ToolStatus};
 
 const VOLUME_IPC_DEBOUNCE_MS: u64 = 50;
+const APP_UPDATE_REPOSITORY: &str = "trulysweyn/SpotiFast";
 
 struct PlayerApp {
     palette: SpotifyPalette,
@@ -97,7 +98,6 @@ struct PlayerApp {
     tool_statuses: Vec<ToolStatus>,
     settings_busy: bool,
     settings_message: String,
-    app_update_repository_input: String,
     app_update_info: Option<AppUpdateInfo>,
     app_update_busy: bool,
     app_update_message: String,
@@ -118,7 +118,6 @@ impl PlayerApp {
         let (tx, rx) = mpsc::channel();
         let persisted = load_persisted_state();
         let settings = backend::load_settings();
-        let app_update_repository_input = settings.update_repository.clone();
         let resume_track = persisted.last_played_track.clone().or_else(|| {
             persisted
                 .last_track_index
@@ -195,11 +194,9 @@ impl PlayerApp {
                 .collect(),
             settings_busy: false,
             settings_message: "Check for updates to see the latest player tools.".to_string(),
-            app_update_repository_input,
             app_update_info: None,
             app_update_busy: false,
-            app_update_message: "Set a GitHub repository to check for SpotiFast releases."
-                .to_string(),
+            app_update_message: "Check for a newer SpotiFast version when available.".to_string(),
             exit_for_app_update: false,
 
             status: "Ready. Search for songs or choose from your Library.".to_string(),
@@ -306,23 +303,8 @@ impl PlayerApp {
         });
     }
 
-    fn save_app_update_repository(&mut self) {
-        let repository = self.app_update_repository_input.trim().to_string();
-        self.settings.update_repository = repository.clone();
-        self.app_update_repository_input = repository;
-        save_settings(&self.settings);
-        self.app_update_info = None;
-        self.app_update_message =
-            "Release source saved. Check for a new SpotiFast version.".to_string();
-    }
-
     fn check_app_updates(&mut self) {
         if self.app_update_busy {
-            return;
-        }
-        let repository = self.settings.update_repository.trim().to_string();
-        if repository.is_empty() {
-            self.app_update_message = "Enter and save your GitHub repository first.".to_string();
             return;
         }
         self.app_update_busy = true;
@@ -330,7 +312,7 @@ impl PlayerApp {
         let tx = self.tx.clone();
         thread::spawn(move || {
             let _ = tx.send(WorkerMsg::AppUpdateCheckFinished(
-                updater::check_app_updates(&repository),
+                updater::check_app_updates(APP_UPDATE_REPOSITORY),
             ));
         });
     }
@@ -339,13 +321,12 @@ impl PlayerApp {
         if self.app_update_busy {
             return;
         }
-        let repository = self.settings.update_repository.trim().to_string();
         self.app_update_busy = true;
         self.app_update_message = "Downloading and validating the SpotiFast update…".to_string();
         let tx = self.tx.clone();
         thread::spawn(move || {
             let _ = tx.send(WorkerMsg::AppUpdateStaged(updater::stage_app_update(
-                &repository,
+                APP_UPDATE_REPOSITORY,
             )));
         });
     }
@@ -1531,7 +1512,6 @@ impl PlayerApp {
         let mut check_updates = false;
         let mut install = None;
         let mut rollback = None;
-        let mut save_app_source = false;
         let mut check_app = false;
         let mut install_app = false;
         let mut rollback_app = false;
@@ -1599,27 +1579,10 @@ impl PlayerApp {
                     ui.label(RichText::new("SpotiFast updates").font(track_bold_font(18.0)));
                     ui.add_space(4.0);
                     ui.label(
-                        RichText::new("Check GitHub Releases for a newer app version. The updater stages and validates the build, then restarts SpotiFast to install it.")
+                        RichText::new("Check GitHub Releases for a newer app version. Updates come from the official SpotiFast repository; the updater stages and validates the build, then restarts SpotiFast to install it.")
                             .color(pal.text_subtle),
                     );
                     ui.add_space(10.0);
-                    ui.horizontal(|ui| {
-                        ui.label("GitHub repository");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.app_update_repository_input)
-                                .hint_text("owner/repository")
-                                .desired_width(260.0),
-                        );
-                        if ui.add_enabled(!self.app_update_busy, egui::Button::new("Save")).clicked() {
-                            save_app_source = true;
-                        }
-                    });
-                    ui.label(
-                        RichText::new("Each release must include SpotiFast.exe and SpotiFastUpdater.exe.")
-                            .size(12.0)
-                            .color(pal.text_faint),
-                    );
-                    ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         if ui
                             .add_enabled(!self.app_update_busy, egui::Button::new(if self.app_update_busy { "Working…" } else { "Check app updates" }))
@@ -1753,9 +1716,6 @@ impl PlayerApp {
         }
         if let Some(kind) = rollback {
             self.rollback_tool(kind);
-        }
-        if save_app_source {
-            self.save_app_update_repository();
         }
         if check_app {
             self.check_app_updates();
