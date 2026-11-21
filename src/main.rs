@@ -1558,7 +1558,33 @@ impl PlayerApp {
                     );
                     ui.add_space(10.0);
                     let mut enabled = self.settings.run_at_startup;
-                    if ui.checkbox(&mut enabled, "Run at startup").changed() {
+                    let checkbox = ui.checkbox(&mut enabled, "Run at startup");
+                    if enabled {
+                        let spacing = ui.spacing();
+                        let icon_center = Pos2::new(
+                            checkbox.rect.left() + spacing.icon_width * 0.5,
+                            checkbox.rect.center().y,
+                        );
+                        let check_rect = Rect::from_center_size(
+                            icon_center,
+                            vec2(spacing.icon_width_inner, spacing.icon_width_inner),
+                        );
+                        ui.painter().line_segment(
+                            [
+                                Pos2::new(check_rect.left(), check_rect.center().y),
+                                Pos2::new(check_rect.center().x, check_rect.bottom()),
+                            ],
+                            Stroke::new(2.0, pal.green_accent),
+                        );
+                        ui.painter().line_segment(
+                            [
+                                Pos2::new(check_rect.center().x, check_rect.bottom()),
+                                Pos2::new(check_rect.right(), check_rect.top()),
+                            ],
+                            Stroke::new(2.0, pal.green_accent),
+                        );
+                    }
+                    if checkbox.changed() {
                         self.set_startup_preference(enabled);
                     }
                 });
