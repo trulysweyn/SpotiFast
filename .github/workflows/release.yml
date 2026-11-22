@@ -30,6 +30,38 @@ jobs:
           Copy-Item target\release\spotifast.exe dist\SpotiFast.exe
           Copy-Item target\release\spotifast_updater.exe dist\SpotiFastUpdater.exe
 
+      - name: Download player tools for installer
+        shell: pwsh
+        run: |
+          $headers = @{ 'User-Agent' = 'SpotiFast-release-build' }
+          $ytRelease = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest'
+          $ytAsset = $ytRelease.assets | Where-Object { $_.name -eq 'yt-dlp.exe' } | Select-Object -First 1
+          if (-not $ytAsset) { throw 'The latest yt-dlp release did not include yt-dlp.exe.' }
+
+          $ytDir = 'dist\tools\yt-dlp'
+          $mpvDir = 'dist\tools\mpv'
+          New-Item -ItemType Directory -Force -Path $ytDir, $mpvDir | Out-Null
+          Invoke-WebRequest -Headers $headers -Uri $ytAsset.browser_download_url -OutFile (Join-Path $ytDir 'yt-dlp.exe')
+
+          $mpvRelease = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest'
+          $mpvAsset = $mpvRelease.assets | Where-Object { $_.name -like 'mpv-x86_64-*.7z' } | Select-Object -First 1
+          if (-not $mpvAsset) { throw 'The latest mpv release did not include a compatible x86_64 archive.' }
+
+          $sevenZip = Join-Path ([Environment]::GetFolderPath('ProgramFiles')) '7-Zip\7z.exe'
+          if (-not (Test-Path -LiteralPath $sevenZip)) {
+            $sevenZip = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) '7-Zip\7z.exe'
+          }
+          if (-not (Test-Path -LiteralPath $sevenZip)) { throw '7-Zip was not found on the Windows runner.' }
+          $archive = 'dist\mpv.7z'
+          $extractDir = 'dist\mpv-extracted'
+          Invoke-WebRequest -Headers $headers -Uri $mpvAsset.browser_download_url -OutFile $archive
+          New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+          & $sevenZip x $archive "-o$extractDir" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Could not unpack mpv (7-Zip exit code $LASTEXITCODE)." }
+          $mpvExe = Get-ChildItem -Path $extractDir -Filter 'mpv.exe' -Recurse | Select-Object -First 1
+          if (-not $mpvExe) { throw 'The mpv archive did not contain mpv.exe.' }
+          Copy-Item -Path (Join-Path $mpvExe.DirectoryName '*') -Destination $mpvDir -Recurse -Force
+
       - name: Build single-file installer
         shell: pwsh
         run: |

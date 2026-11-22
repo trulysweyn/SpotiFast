@@ -273,6 +273,17 @@ pub fn tool_executable(name: &str) -> PathBuf {
         return managed;
     }
 
+    if let Some(bundled) = std::env::current_exe()
+        .ok()
+        .and_then(|app| {
+            app.parent()
+                .map(|dir| dir.join("tools").join(kind.folder()).join(exe))
+        })
+        .filter(|path| path.is_file())
+    {
+        return bundled;
+    }
+
     let path_name = if name.to_ascii_lowercase().ends_with(".exe") {
         name.to_string()
     } else {
