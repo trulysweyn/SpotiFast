@@ -67,6 +67,7 @@ struct PlayerApp {
     active_track: Option<PlaylistEntry>,
     paused: bool,
     volume: f32,
+    last_unmuted_volume: f32,
     last_volume_ipc: Option<Instant>,
     pending_volume_ipc: bool,
 
@@ -117,6 +118,13 @@ impl PlayerApp {
 
         let (tx, rx) = mpsc::channel();
         let persisted = load_persisted_state();
+        let last_unmuted_volume = if (1.0..=100.0).contains(&persisted.last_unmuted_volume) {
+            persisted.last_unmuted_volume
+        } else if persisted.volume > 0.0 {
+            persisted.volume
+        } else {
+            80.0
+        };
         let settings = backend::load_settings();
         let resume_track = persisted.last_played_track.clone().or_else(|| {
             persisted
@@ -159,6 +167,7 @@ impl PlayerApp {
             active_track: None,
             paused: false,
             volume: persisted.volume,
+            last_unmuted_volume,
             last_volume_ipc: None,
             pending_volume_ipc: false,
 
@@ -317,6 +326,11 @@ impl PlayerApp {
         });
     }
 
+    fn check_all_updates(&mut self) {
+        self.check_app_updates();
+        self.check_tool_updates();
+    }
+
     fn download_app_update(&mut self) {
         if self.app_update_busy {
             return;
@@ -455,6 +469,7 @@ impl PlayerApp {
             auto_advance: self.auto_advance,
             loop_playlist: self.loop_playlist,
             volume: self.volume,
+            last_unmuted_volume: self.last_unmuted_volume,
             saved_playlists: self.saved_playlists.clone(),
         };
         save_persisted_state(&state);
@@ -1438,9 +1453,10 @@ impl eframe::App for PlayerApp {
                         );
                         if mute_resp.clicked() {
                             if self.volume > 0.0 {
+                                self.last_unmuted_volume = self.volume;
                                 self.volume = 0.0;
                             } else {
-                                self.volume = 80.0;
+                                self.volume = self.last_unmuted_volume;
                             }
                             self.on_volume_changed();
                         }
@@ -1449,6 +1465,9 @@ impl eframe::App for PlayerApp {
                         let slider_w = if is_narrow { 40.0 } else { 85.0 };
                         if let Some(new_vol) = volume_slider(ui, slider_w, self.volume, &pal) {
                             self.volume = new_vol;
+                            if new_vol > 0.0 {
+                                self.last_unmuted_volume = new_vol;
+                            }
                             self.on_volume_changed();
                         }
                         if let Some(track) = self.active_track.clone() {
@@ -1509,10 +1528,9 @@ impl eframe::App for PlayerApp {
 impl PlayerApp {
     fn render_settings_view(&mut self, ui: &mut egui::Ui) {
         let pal = self.palette;
-        let mut check_updates = false;
+        let mut check_all_updates = false;
         let mut install = None;
         let mut rollback = None;
-        let mut check_app = false;
         let mut install_app = false;
         let mut rollback_app = false;
 
@@ -1576,19 +1594,26 @@ impl PlayerApp {
                 .corner_radius(CornerRadius::same(12))
                 .inner_margin(Margin::same(18))
                 .show(ui, |ui| {
-                    ui.label(RichText::new("SpotiFast updates").font(track_bold_font(18.0)));
+                    ui.label(RichText::new("Updates").font(track_bold_font(18.0)));
                     ui.add_space(4.0);
                     ui.label(
-                        RichText::new("Check GitHub Releases for a newer app version. Updates come from the official SpotiFast repository; the updater stages and validates the build, then restarts SpotiFast to install it.")
+                        RichText::new("Check SpotiFast, yt-dlp, and mpv together. App updates are staged and validated before SpotiFast restarts.")
                             .color(pal.text_subtle),
                     );
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
                         if ui
-                            .add_enabled(!self.app_update_busy, egui::Button::new(if self.app_update_busy { "Working…" } else { "Check app updates" }))
+                            .add_enabled(
+                                !self.app_update_busy && !self.settings_busy,
+                                egui::Button::new(if self.app_update_busy || self.settings_busy {
+                                    "Checking…"
+                                } else {
+                                    "Check for updates"
+                                }),
+                            )
                             .clicked()
                         {
-                            check_app = true;
+                            check_all_updates = true;
                         }
                         if self.app_update_info.as_ref().is_some_and(|info| info.update_available)
                             && ui.add_enabled(!self.app_update_busy, egui::Button::new("Install update")).clicked()
@@ -1626,21 +1651,11 @@ impl PlayerApp {
                 .corner_radius(CornerRadius::same(12))
                 .inner_margin(Margin::same(18))
                 .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.vertical(|ui| {
-                            ui.label(RichText::new("Player tools").font(track_bold_font(18.0)));
-                            ui.label(
-                                RichText::new("Check and update yt-dlp and mpv. MPV Windows builds come from shinchiro, listed by the mpv project.")
-                                    .color(pal.text_subtle),
-                            );
-                        });
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            let button = if self.settings_busy { "Working…" } else { "Check for updates" };
-                            if ui.add_enabled(!self.settings_busy, egui::Button::new(button)).clicked() {
-                                check_updates = true;
-                            }
-                        });
-                    });
+                    ui.label(RichText::new("Player tools").font(track_bold_font(18.0)));
+                    ui.label(
+                        RichText::new("Manage yt-dlp and mpv. MPV Windows builds come from shinchiro, listed by the mpv project.")
+                            .color(pal.text_subtle),
+                    );
                     ui.add_space(12.0);
                     ui.separator();
 
@@ -1708,17 +1723,14 @@ impl PlayerApp {
                 });
         });
 
-        if check_updates {
-            self.check_tool_updates();
+        if check_all_updates {
+            self.check_all_updates();
         }
         if let Some(kind) = install {
             self.install_tool_update(kind);
         }
         if let Some(kind) = rollback {
             self.rollback_tool(kind);
-        }
-        if check_app {
-            self.check_app_updates();
         }
         if install_app {
             self.download_app_update();

@@ -231,6 +231,8 @@ pub struct PersistedState {
     pub auto_advance: bool,
     pub loop_playlist: bool,
     pub volume: f32,
+    #[serde(default)]
+    pub last_unmuted_volume: f32,
     pub saved_playlists: Vec<SavedPlaylist>,
 }
 

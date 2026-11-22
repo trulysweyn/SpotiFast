@@ -333,6 +333,13 @@ pub fn load_persisted_state() -> PersistedState {
     if !(0.0..=100.0).contains(&state.volume) {
         state.volume = 80.0;
     }
+    if !(1.0..=100.0).contains(&state.last_unmuted_volume) {
+        state.last_unmuted_volume = if state.volume > 0.0 {
+            state.volume
+        } else {
+            80.0
+        };
+    }
     state
 }
 
