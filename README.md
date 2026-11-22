@@ -20,4 +20,4 @@ The app and update helper are created in `target\release`.
 
 ## Publish a release
 
-Push a version tag such as `v0.5.3` to GitHub. The release workflow builds both Windows executables, packages them into `SpotiFast-Setup.exe`, and attaches all three files to a GitHub Release. The app's update source is compiled from the repository name automatically.
+Push a version tag such as `v0.5.5` to GitHub. The release workflow builds both Windows executables, packages them into `SpotiFast-Setup.exe`, and attaches all three files to a GitHub Release. The app's update source is compiled from the repository name automatically.
